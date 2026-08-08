@@ -33,6 +33,8 @@ if [ -n "$MESSAGE" ]; then
 fi
 if [ -e "$PREVIEW" ]; then
     img_preview "$PREVIEW"
-elif [ ! -e "$PREVIEW" ]; then
+elif [ -e "$XDG_CACHE_HOME/hyde/gallery-database/preview.png" ]; then
     img_preview "$XDG_CACHE_HOME/hyde/gallery-database/preview.png"
+else
+    print_log -y "Preview unavailable"
 fi

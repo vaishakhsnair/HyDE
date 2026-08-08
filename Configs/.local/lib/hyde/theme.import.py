@@ -189,10 +189,6 @@ def get_theme_preview(theme):
         image = CLONE_DIR + "/preview.png"
     else:
         theme_data = next((t for t in JSON_DATA if t["THEME"] == theme), None)
-        if theme_data and theme_data.get("PREVIEW"):
-            image = random.choice(theme_data["PREVIEW"])
-        else:
-            image = None
         theme_name = theme_data.get("THEME")
         theme_link = theme_data.get("LINK")
         theme_author = theme_data.get("OWNER")
@@ -201,6 +197,7 @@ def get_theme_preview(theme):
             remote_preview = fetch_remote_theme_preview(theme)
             if remote_preview:
                 theme_data["PREVIEW"] = [remote_preview]
+        image = random.choice(theme_data["PREVIEW"]) if theme_data.get("PREVIEW") else None
         color1 = (
             theme_data.get("COLORSCHEME", [])[0] if theme_data.get("COLORSCHEME") else "#000000"
         )
