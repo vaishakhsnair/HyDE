@@ -9,6 +9,7 @@ import pyutils.logger as logger
 import random
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 
 logger = logger.get_logger()
 
@@ -19,6 +20,7 @@ CLONE_DIR = os.path.join(
     "hyde/gallery-database",
 )
 JSON_DATA = None
+REMOTE_IMAGE_PATHS = None
 
 
 def fetch_theme_preview_path(theme):
@@ -31,6 +33,47 @@ def fetch_theme_preview_path(theme):
                     images.append(os.path.join(root, file))
         if images:
             return images
+
+
+def fetch_remote_image_paths():
+    global REMOTE_IMAGE_PATHS
+    if REMOTE_IMAGE_PATHS is not None:
+        return REMOTE_IMAGE_PATHS
+    try:
+        api_url = "https://api.github.com/repos/HyDE-Project/hyde-gallery/git/trees/master?recursive=1"
+        request = urllib.request.Request(api_url, headers={"User-Agent": "hyde-theme-installer"})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            tree = json.loads(response.read().decode("utf-8")).get("tree", [])
+        image_paths = {}
+        for entry in tree:
+            path = entry.get("path", "")
+            if "/" not in path or not path.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
+                continue
+            theme, filename = path.split("/", 1)
+            image_paths.setdefault(theme, []).append(path)
+        REMOTE_IMAGE_PATHS = image_paths
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as e:
+        logger.debug(f"Unable to fetch remote preview list: {e}")
+        REMOTE_IMAGE_PATHS = {}
+    return REMOTE_IMAGE_PATHS
+
+
+def fetch_remote_theme_preview(theme):
+    paths = fetch_remote_image_paths().get(theme, [])
+    if not paths:
+        return None
+    paths.sort(key=lambda path: ("preview" not in path.lower(), "screenshot" not in path.lower(), path))
+    preview_dir = os.path.join(CLONE_DIR, ".previews")
+    os.makedirs(preview_dir, exist_ok=True)
+    preview_path = os.path.join(preview_dir, f"{theme}." + paths[0].rsplit(".", 1)[-1])
+    if not os.path.exists(preview_path):
+        raw_url = "https://raw.githubusercontent.com/HyDE-Project/hyde-gallery/master/" + quote(paths[0], safe="/")
+        try:
+            urllib.request.urlretrieve(raw_url, preview_path)
+        except (OSError, urllib.error.URLError) as e:
+            logger.debug(f"Unable to download preview for {theme}: {e}")
+            return None
+    return preview_path
 
 
 def fetch_data():
@@ -154,6 +197,10 @@ def get_theme_preview(theme):
         theme_link = theme_data.get("LINK")
         theme_author = theme_data.get("OWNER")
         theme_description = theme_data.get("DESCRIPTION")
+        if not theme_data.get("PREVIEW"):
+            remote_preview = fetch_remote_theme_preview(theme)
+            if remote_preview:
+                theme_data["PREVIEW"] = [remote_preview]
         color1 = (
             theme_data.get("COLORSCHEME", [])[0] if theme_data.get("COLORSCHEME") else "#000000"
         )
