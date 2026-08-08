@@ -7,10 +7,13 @@ import sys
 import pyutils.wrapper.fzf as fzf
 import pyutils.logger as logger
 import random
+import urllib.request
+import urllib.error
 
 logger = logger.get_logger()
 
 REPO_URL = "https://github.com/HyDE-Project/hyde-gallery.git"
+THEMES_JSON_URL = "https://raw.githubusercontent.com/HyDE-Project/hyde-gallery/master/hyde-themes.json"
 CLONE_DIR = os.path.join(
     os.getenv("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
     "hyde/gallery-database",
@@ -34,15 +37,36 @@ def fetch_data():
     global JSON_DATA
     json_file_path = os.path.join(CLONE_DIR, "hyde-themes.json")
     if os.path.exists(json_file_path):
-        with open(json_file_path, "r") as json_file:
-            JSON_DATA = json.load(json_file)
-            for theme in JSON_DATA:
-                theme["PREVIEW"] = fetch_theme_preview_path(theme["THEME"])
+        try:
+            with open(json_file_path, "r") as json_file:
+                JSON_DATA = json.load(json_file)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug(f"Failed to read cached theme data: {e}")
+            JSON_DATA = None
     else:
-        logger.debug(f"JSON file not found: {json_file_path}")
+        # The gallery contains large preview images. Downloading the whole git
+        # repository can take several minutes and used to leave the installer
+        # looking blank while fzf was given no choices. The index is small and
+        # is enough to populate the installer; previews remain optional.
+        try:
+            with urllib.request.urlopen(THEMES_JSON_URL, timeout=15) as response:
+                JSON_DATA = json.loads(response.read().decode("utf-8"))
+            os.makedirs(CLONE_DIR, exist_ok=True)
+            with open(json_file_path, "w") as json_file:
+                json.dump(JSON_DATA, json_file)
+        except (OSError, urllib.error.URLError, json.JSONDecodeError) as e:
+            logger.error(f"Unable to download theme data: {e}")
+            JSON_DATA = None
+
+    if JSON_DATA:
+        for theme in JSON_DATA:
+            theme["PREVIEW"] = fetch_theme_preview_path(theme["THEME"])
 
 
 def clone_repo():
+    # Keep the legacy clone/update behavior when a complete gallery already
+    # exists, but don't make first-run installation depend on cloning its
+    # multi-gigabyte preview history. fetch_data() has a lightweight fallback.
     if os.path.exists(CLONE_DIR):
         try:
             logger.debug(f"Resetting and cleaning repository in {CLONE_DIR}")
@@ -66,26 +90,15 @@ def clone_repo():
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=20,
             )
             logger.debug(result.stdout)
             logger.debug(f"Repository updated successfully in {CLONE_DIR}")
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.debug(f"Failed to update repository: {e}")
-            logger.debug(e.stderr)
+            logger.debug(getattr(e, "stderr", ""))
     else:
-        try:
-            logger.debug(f"Cloning repository into {CLONE_DIR}")
-            result = subprocess.run(
-                ["git", "clone", "--depth", "1", REPO_URL, CLONE_DIR],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            logger.debug(result.stdout)
-            logger.debug(f"Repository cloned successfully into {CLONE_DIR}")
-        except subprocess.CalledProcessError as e:
-            logger.debug(f"Failed to clone repository: {e}")
-            logger.debug(e.stderr)
+        logger.debug("Skipping initial gallery clone; using the lightweight theme index")
 
 
 def get_theme_preview(theme):
@@ -235,6 +248,7 @@ def patch_themes(selected_themes):
 
 def fzf_menu():
     try:
+        SELECTED_THEMES = []
         fetch_data()
         if JSON_DATA:
             themes = [theme["THEME"] for theme in JSON_DATA]
@@ -255,6 +269,7 @@ def fzf_menu():
             SELECTED_THEMES = fzf.prompt(themes, fzf_options)
             logger.debug(f"Selected themes: {SELECTED_THEMES}")
         else:
+            print("\n❌ Theme gallery data is unavailable. Check your internet connection and try again.\n")
             logger.debug("No JSON data available to display themes.")
         if SELECTED_THEMES and "[CONFIRM]" in SELECTED_THEMES:
             SELECTED_THEMES.remove("[CONFIRM]")
