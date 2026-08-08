@@ -308,7 +308,7 @@ def fzf_menu():
                 "--bind=ctrl-a:select-all,ctrl-d:deselect-all",
                 "--preview-window=right:60%,border-rounded",
                 "--preview= theme.import.py --skip-clone --preview {}",
-                "--preview-window=right::70%",
+                "--preview-window=right:60%:border-rounded",
             ]
             SELECTED_THEMES = fzf.prompt(themes, fzf_options)
             logger.debug(f"Selected themes: {SELECTED_THEMES}")

@@ -8,7 +8,7 @@ img_preview() {
     local image_url="$1"
     [ -z "$image_url" ] && return 1
     if [ xterm-kitty == "$TERM" ]; then
-        kitty icat --clear --transfer-mode=memory --stdin=no --place=100x200@20x2 "$image_url" || kitty icat --clear --transfer-mode=memory --stdin=no "$image_url"
+        kitty icat --clear --transfer-mode=memory --stdin=no --place=60x30@40x2 "$image_url"
     else
         if command -v jp2a &> /dev/null; then
             find "$image_url" -name "*" -exec jp2a --colors --color-depth=24 --chars=' .:-=+*#%@' --fill --term-fit --background=dark {} \; 2> /dev/null
